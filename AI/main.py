@@ -1,9 +1,19 @@
 import ollama
-
+from memory import (
+    save_fact,
+    get_all_facts
+)
+from brain.memory_parser import process_memory
+from brain.semantic_memory import extract_memory_meaning
+from brain.memory_engine import load_memories
+from memory_commands import handle_memory_commands
 from config import SYSTEM_PROMPT
 from model_router import choose_model
 from memory import save_conversation, get_recent_messages, clear_memory
-
+from brain.translator import translate_to_english
+from brain.memory_understanding import understand_memory
+from brain.profile_manager import update_profile
+from brain.memory_engine import save_memory
 from modules.action import execute_command
 from modules.web_search import search_web
 from modules.tools import handle_dynamic_tools, is_web_search
@@ -31,6 +41,7 @@ def get_mode():
 
 
 def build_chat_messages(user_input, extra_system_prompt=None):
+
     messages = [
         {
             "role": "system",
@@ -38,7 +49,41 @@ def build_chat_messages(user_input, extra_system_prompt=None):
         }
     ]
 
+    all_memories = load_memories()
+
+    relevant_facts = []
+
+    for item in all_memories:
+        relevant_facts.append(
+            item["memory"]
+        )
+
+    if relevant_facts:
+
+        memory_text = "\n".join(
+            f"- {fact}"
+            for fact in relevant_facts
+        )
+
+        messages.append(
+            {
+                "role": "system",
+                "content": f"""
+        Known information about the user:
+
+        {memory_text}
+
+        Rules:
+        - Use this information only when relevant.
+        - Maintain conversation continuity.
+        - If the user asks about themselves, projects, preferences or past discussions, use these memories.
+        - Do not repeat memories unless useful.
+        """
+            }
+        )
+
     if extra_system_prompt:
+
         messages.append(
             {
                 "role": "system",
@@ -47,6 +92,7 @@ def build_chat_messages(user_input, extra_system_prompt=None):
         )
 
     history = get_recent_messages(limit=10)
+
     messages.extend(history)
 
     messages.append(
@@ -57,7 +103,6 @@ def build_chat_messages(user_input, extra_system_prompt=None):
     )
 
     return messages
-
 
 def ask_llm(user_input, extra_system_prompt=None, temperature=0.6):
     model = choose_model(user_input)
@@ -152,20 +197,79 @@ def respond_and_save(user_input, answer):
 
 
 def process_user_input(user_input):
-    action_result = execute_command(user_input)
-    if action_result:
-        return humanize_response(user_input, str(action_result))
+    memory_response = handle_memory_commands(
+        user_input
+    )
 
-    api_result = handle_dynamic_tools(user_input)
+    if memory_response:
+        return memory_response
+
+    english_text = translate_to_english(
+        user_input
+    )
+
+    memory = understand_memory(
+        english_text
+    )
+
+    if memory:
+
+        category = memory["category"]
+        value = memory["memory"]
+
+        if category == "name":
+
+            update_profile(
+                "name",
+                value.replace(
+                    "User's first name is ",
+                    ""
+                )
+            )
+
+        elif category == "preferred_name":
+
+            update_profile(
+                "preferred_name",
+                value.replace(
+                    "User prefers to be called ",
+                    ""
+                )
+            )
+
+        else:
+
+            save_memory(
+                value,
+                category
+            )
+
+    action_result = execute_command(
+        user_input
+    )
+
+    if action_result:
+        return humanize_response(
+            user_input,
+            str(action_result)
+        )
+
+    api_result = handle_dynamic_tools(
+        user_input
+    )
+
     if api_result:
-        return humanize_response(user_input, str(api_result))
+        return humanize_response(
+            user_input,
+            str(api_result)
+        )
 
     if is_web_search(user_input):
         return handle_web_query(user_input)
 
-    return ask_llm_with_memory(user_input)
-
-
+    return ask_llm_with_memory(
+        user_input
+    )
 def main():
     print_banner()
     mode = get_mode()

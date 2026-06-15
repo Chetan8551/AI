@@ -75,6 +75,9 @@ def handle_dynamic_tools(user_input):
 
     try:
         stage2 = route_stage2(user_input, memory_text)
+        print("\nDEBUG ROUTE:")
+        print(stage2)
+        print()
     except Exception:
         return None
 
@@ -117,15 +120,46 @@ def handle_dynamic_tools(user_input):
         return "Please say it like: convert 100 USD to INR"
 
     if intent == "github_user":
+
+        trigger_words = [
+            "github",
+            "git hub",
+            "repository",
+            "repo",
+            "profile"
+        ]
+
+        if not any(
+            word in user_input.lower()
+            for word in trigger_words
+        ):
+            return None
+
         username = entity or owner
+
         if username:
             return get_github_user(username)
+
         return "Please provide the GitHub username."
 
     if intent == "github_repo":
+
+        trigger_words = [
+            "github",
+            "repo",
+            "repository"
+        ]
+
+        if not any(
+            word in user_input.lower()
+            for word in trigger_words
+        ):
+            return None
+
         if owner and repo:
             return get_github_repo(owner, repo)
-        return "Please provide the GitHub repository in owner slash repo format."
+
+        return "Please provide owner/repo."
 
     if intent == "anime":
         if sub_intent == "top_list":
